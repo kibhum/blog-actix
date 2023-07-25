@@ -170,3 +170,44 @@ pub fn user_comments(
         .load::<(Comment, PostWithComment)>(conn)
         .map_err(Into::into)
 }
+
+pub fn all_posts_with_comments_user(
+    conn: &SqliteConnection,
+) -> Result<Vec<((Post, User), Vec<(Comment, User)>)>> {
+    let query = posts::table
+        .order(posts::id.desc())
+        .filter(posts::published.eq(true))
+        .inner_join(users::table)
+        .select((posts::all_columns, (users::id, users::username)));
+    let posts_with_user = query.load::<(Post, User)>(conn)?;
+    // We then use the unzip method on std::iter::Iterator which turns an iterator of pairs into a pair of iterators.
+    // we turn Vec<(Post, User)> into (Vec<Post>, Vec<User>).
+    let (posts, post_users): (Vec<_>, Vec<_>) = posts_with_user.into_iter().unzip();
+    // To associate the comments into chunks indexed by the posts we use the grouped_by method provided by Diesel. Note this does not generate a GROUP BY statement in SQL rather it is just operating on the data structures in memory of already loaded data.
+    let comments = Comment::belonging_to(&posts)
+        .inner_join(users::table)
+        .select((comments::all_columns, (users::id, users::username)))
+        .load::<(Comment, User)>(conn)?
+        .grouped_by(&posts);
+    // we can use the zip method on iterator to take all of these vectors and combine them into the output format we were looking for
+    Ok(posts.into_iter().zip(post_users).zip(comments).collect())
+}
+
+pub fn user_posts_with_comments(
+    conn: &SqliteConnection,
+    user_id: i32,
+) -> Result<Vec<(Post, Vec<(Comment, User)>)>> {
+    let posts = posts::table
+        .filter(posts::user_id.eq(user_id))
+        .order(posts::id.desc())
+        .select(posts::all_columns)
+        .load::<Post>(conn)?;
+
+    let comments = Comment::belonging_to(&posts)
+        .inner_join(users::table)
+        .select((comments::all_columns, (users::id, users::username)))
+        .load::<(Comment, User)>(conn)?
+        .grouped_by(&posts);
+
+    Ok(posts.into_iter().zip(comments).collect())
+}

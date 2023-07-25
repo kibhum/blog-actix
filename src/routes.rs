@@ -3,6 +3,7 @@ use actix_web::HttpResponse;
 
 // If you want to restrict the visibility of an item to a specific scope then you can use one of pub(in path),pub(crate), pub(super), or pub(self),
 
+pub(super) mod comments;
 pub(super) mod posts;
 pub(super) mod users;
 
